@@ -823,43 +823,97 @@ async function finalizarOrcamento(){
 
   const gerarProposta = document.getElementById('chk-proposta').checked;
 
-  const totais = calcularTotais();
-  const cliente = { nome, whats: whatsRaw, endereco };
-  const mensagem = montarMensagem(cliente, itensOrcamento, totais, obs);
-  const camposProposta = gerarProposta ? coletarCamposProposta() : null;
-
-  const registro = { id: uid(), data: new Date().toISOString(), cliente, itens: itensOrcamento.map(i => ({ nome:i.nome, preco:i.preco, qtd:i.qtd })), totais, observacoes: obs, proposta: camposProposta };
-  historico.unshift(registro);
-  upsertCliente(nome, whatsRaw, endereco);
-
-  if(document.getElementById('chk-agendar').checked){
-    const data = document.getElementById('ag-data').value || hojeStr();
-    const hora = document.getElementById('ag-hora').value;
-    const servico = document.getElementById('ag-servico').value.trim();
-    agenda.push({ id: uid(), clienteNome: nome, whats: whatsRaw, data, hora, servico, categoria: null, endereco, observacao: '', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false, lembrete2hEnviado:false });
-    await salvarAgenda();
-  }
-
-  await salvarHistorico();
-  await salvarClientes();
-
+  // Se for gerar PDF, garante que a biblioteca jsPDF está carregada ANTES de
+  // mexer em qualquer dado. Se o CDN falhou (rede lenta, bloqueio, ad-block),
+  // avisamos o usuário em vez de travar silenciosamente.
   if(gerarProposta){
-    const doc = gerarPDFProposta(cliente, itensOrcamento, totais, obs, camposProposta);
-    const blob = doc.output('blob');
-    const nomeArquivo = `Orcamento-${nome.replace(/[^\w]+/g,'-')}.pdf`;
-    const file = new File([blob], nomeArquivo, { type:'application/pdf' });
-    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw);
-    if(enviouDireto) toast('Compartilhamento aberto — escolha o WhatsApp do cliente');
-    // se não foi direto, o botão "Abrir WhatsApp" já apareceu na tela (mostrarBannerWhats)
-  }else{
-    const numeroLimpo = digitos(whatsRaw);
-    const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
-    const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-    mostrarBannerWhats(url, '✅ Orçamento salvo! Toque para abrir o WhatsApp e enviar');
+    const ok = await garantirJsPDF();
+    if(!ok){
+      toast('⚠️ Não consegui carregar o gerador de PDF. Verifique sua internet e recarregue a página.');
+      return;
+    }
   }
 
-  renderHistorico(); renderClientes(); renderClientDatalist(); renderCalendario(); renderAgendaDia(); renderNotifs(); renderDashboard();
-  limparFormulario();
+  const btn = document.getElementById('btn-enviar');
+  const textoOriginalBtn = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = gerarProposta ? '⏳ Gerando PDF...' : '⏳ Enviando...';
+
+  try{
+    const totais = calcularTotais();
+    const cliente = { nome, whats: whatsRaw, endereco };
+    const mensagem = montarMensagem(cliente, itensOrcamento, totais, obs);
+    const camposProposta = gerarProposta ? coletarCamposProposta() : null;
+
+    const registro = { id: uid(), data: new Date().toISOString(), cliente, itens: itensOrcamento.map(i => ({ nome:i.nome, preco:i.preco, qtd:i.qtd })), totais, observacoes: obs, proposta: camposProposta };
+    historico.unshift(registro);
+    upsertCliente(nome, whatsRaw, endereco);
+
+    if(document.getElementById('chk-agendar').checked){
+      const data = document.getElementById('ag-data').value || hojeStr();
+      const hora = document.getElementById('ag-hora').value;
+      const servico = document.getElementById('ag-servico').value.trim();
+      agenda.push({ id: uid(), clienteNome: nome, whats: whatsRaw, data, hora, servico, categoria: null, endereco, observacao: '', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false, lembrete2hEnviado:false });
+      await salvarAgenda();
+    }
+
+    await salvarHistorico();
+    await salvarClientes();
+
+    if(gerarProposta){
+      const doc = gerarPDFProposta(cliente, itensOrcamento, totais, obs, camposProposta);
+      const blob = doc.output('blob');
+      const nomeArquivo = `Orcamento-${nome.replace(/[^\w]+/g,'-')}.pdf`;
+      const file = new File([blob], nomeArquivo, { type:'application/pdf' });
+      const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw);
+      if(enviouDireto) toast('Compartilhamento aberto — escolha o WhatsApp do cliente');
+      // se não foi direto, o botão "Abrir WhatsApp" já apareceu na tela (mostrarBannerWhats)
+    }else{
+      const numeroLimpo = digitos(whatsRaw);
+      const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
+      const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
+      mostrarBannerWhats(url, '✅ Orçamento salvo! Toque para abrir o WhatsApp e enviar');
+    }
+
+    renderHistorico(); renderClientes(); renderClientDatalist(); renderCalendario(); renderAgendaDia(); renderNotifs(); renderDashboard();
+    limparFormulario();
+  }catch(erro){
+    console.error('Erro ao finalizar orçamento:', erro);
+    toast('⚠️ Deu um erro ao gerar/enviar. Veja o console (F12) ou tente novamente.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = textoOriginalBtn;
+    atualizarStatus();
+  }
+}
+
+/* ---------- CARREGAMENTO DO jsPDF COM FALLBACK ----------
+   Se o <script> do jsPDF no <head> falhar (CDN bloqueado, rede instável),
+   tentamos carregar de um segundo CDN antes de desistir. Isso evita que
+   o botão "Salvar e enviar" pareça travado sem explicação. */
+let jsPDFCarregando = null;
+function garantirJsPDF(){
+  if(window.jspdf && window.jspdf.jsPDF) return Promise.resolve(true);
+  if(jsPDFCarregando) return jsPDFCarregando;
+  jsPDFCarregando = new Promise((resolve) => {
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+      'https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js'
+    ];
+    let i = 0;
+    function tentar(){
+      if(window.jspdf && window.jspdf.jsPDF){ resolve(true); return; }
+      if(i >= urls.length){ resolve(false); return; }
+      const src = urls[i++];
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve(!!(window.jspdf && window.jspdf.jsPDF));
+      script.onerror = tentar;
+      document.head.appendChild(script);
+    }
+    tentar();
+  });
+  return jsPDFCarregando;
 }
 
 function limparFormulario(){
