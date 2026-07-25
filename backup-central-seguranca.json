@@ -1,0 +1,128 @@
+{
+  "catalogo": [
+    {
+      "categoria": "Câmeras",
+      "itens": [
+        {
+          "id": "bnlnzzvk9",
+          "nome": "Câmera Dome 2MP",
+          "preco": 180
+        },
+        {
+          "id": "o0kydb9kt",
+          "nome": "Câmera Bullet 4MP",
+          "preco": 240
+        },
+        {
+          "id": "yfv4gvw3e",
+          "nome": "Câmera IP Wi-Fi",
+          "preco": 220
+        },
+        {
+          "id": "1d6ptg1bh",
+          "nome": "DVR/NVR 8 canais",
+          "preco": 450
+        }
+      ]
+    },
+    {
+      "categoria": "Alarmes",
+      "itens": [
+        {
+          "id": "3uqs4gemw",
+          "nome": "Central de alarme 8 zonas",
+          "preco": 380
+        },
+        {
+          "id": "gg9lcm1f9",
+          "nome": "Sensor de presença infravermelho",
+          "preco": 60
+        },
+        {
+          "id": "gh6djwz1u",
+          "nome": "Sirene externa",
+          "preco": 90
+        },
+        {
+          "id": "2yq62oi2p",
+          "nome": "Controle remoto",
+          "preco": 45
+        }
+      ]
+    },
+    {
+      "categoria": "Cercas Elétricas",
+      "itens": [
+        {
+          "id": "k5atxfcz7",
+          "nome": "Kit cerca elétrica 60m",
+          "preco": 650
+        },
+        {
+          "id": "agprufvki",
+          "nome": "Haste de choque (unidade)",
+          "preco": 25
+        },
+        {
+          "id": "3yntbm16o",
+          "nome": "Placa de aviso",
+          "preco": 15
+        }
+      ]
+    },
+    {
+      "categoria": "Automação e Interfone",
+      "itens": [
+        {
+          "id": "odz4dax53",
+          "nome": "Interfone porteiro eletrônico",
+          "preco": 210
+        },
+        {
+          "id": "17belghj4",
+          "nome": "Motor de portão deslizante",
+          "preco": 780
+        },
+        {
+          "id": "wgwc6u4c7",
+          "nome": "Fechadura elétrica",
+          "preco": 160
+        }
+      ]
+    },
+    {
+      "categoria": "Serviços",
+      "itens": [
+        {
+          "id": "mu35np1sc",
+          "nome": "Instalação e configuração",
+          "preco": 250
+        },
+        {
+          "id": "r7mo6drww",
+          "nome": "Visita técnica",
+          "preco": 80
+        },
+        {
+          "id": "xbac6eel7",
+          "nome": "Manutenção preventiva",
+          "preco": 120
+        }
+      ]
+    }
+  ],
+  "historico": [],
+  "clientes": [],
+  "agenda": [],
+  "perfilEmpresa": {
+    "nomeEmpresa": "",
+    "responsavel": "",
+    "sobreNos": "",
+    "telefoneContato": "",
+    "emailContato": "",
+    "condicoesPagamento": "",
+    "previsaoEntrega": "",
+    "impostoPerc": ""
+  },
+  "exportadoEm": "2026-07-24T23:59:33"
+}
