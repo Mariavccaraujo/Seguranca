@@ -50,6 +50,8 @@ const CAT_STYLE = {
 function catStyle(cat){ return CAT_STYLE[cat] || {emoji:'🔧', bg:'var(--surface-2)', color:'var(--text-muted)'}; }
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function normalizar(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+let produtoEditandoId = null;
 function hojeStr(){ const d = new Date(); const tz = d.getTimezoneOffset()*60000; return new Date(d - tz).toISOString().slice(0,10); }
 function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=> t.classList.remove('show'), 2200); }
 
@@ -60,11 +62,23 @@ function toast(msg){ const t = document.getElementById('toast'); t.textContent =
    Um clique real do usuário em um link nunca é bloqueado, em nenhum navegador. */
 function mostrarBannerWhats(url, texto){
   const banner = document.getElementById('wa-send-banner');
-  const link = document.getElementById('wa-send-link');
+  const oldLink = document.getElementById('wa-send-link');
   const span = document.getElementById('wa-send-texto');
-  if(!banner || !link || !span) return;
+  if(!banner || !oldLink || !span) return;
   span.textContent = texto || '✅ Pronto! Toque para abrir o WhatsApp';
-  link.href = url;
+  // Recria o botão do zero a cada envio. Em vários navegadores/PWAs (principalmente
+  // iOS e apps "Adicionar à Tela de Início"), reaproveitar o mesmo <a target="_blank">
+  // e só trocar o href faz o clique parar de funcionar depois da primeira vez.
+  // Um elemento <a> novo, criado agora, sempre abre normalmente no clique.
+  const newLink = oldLink.cloneNode(true);
+  newLink.id = 'wa-send-link';
+  newLink.href = url;
+  newLink.removeAttribute('data-used');
+  oldLink.parentNode.replaceChild(newLink, oldLink);
+  newLink.addEventListener('click', () => { setTimeout(fecharBannerWhats, 400); });
+  // Reinicia a animação de entrada mesmo se o banner já estiver visível
+  banner.classList.remove('show');
+  void banner.offsetWidth;
   banner.classList.add('show');
 }
 function fecharBannerWhats(){
@@ -293,25 +307,36 @@ function renderCatPills(){
 function setCategoriaAtiva(c){ categoriaAtiva = c; renderCatPills(); renderLoja(); }
 
 function renderLoja(){
-  const busca = (document.getElementById('loja-search').value || '').toLowerCase();
+  const buscaEl = document.getElementById('loja-search');
+  const busca = normalizar(buscaEl ? buscaEl.value : '');
   let produtos = [];
   catalogo.forEach(cat => {
     cat.itens.forEach(item => {
       if(categoriaAtiva !== 'Todos' && cat.categoria !== categoriaAtiva) return;
-      if(busca && !item.nome.toLowerCase().includes(busca)) return;
+      if(busca && !normalizar(item.nome).includes(busca) && !normalizar(cat.categoria).includes(busca)) return;
       produtos.push({ ...item, categoria: cat.categoria });
     });
   });
   const grid = document.getElementById('product-grid');
+  const contador = document.getElementById('product-count-label');
+  if(contador){
+    const totalCadastrados = catalogo.reduce((s,c) => s + c.itens.length, 0);
+    contador.textContent = busca || categoriaAtiva !== 'Todos'
+      ? `${produtos.length} de ${totalCadastrados} produtos`
+      : `${totalCadastrados} ${totalCadastrados === 1 ? 'produto cadastrado' : 'produtos cadastrados'}`;
+  }
   if(produtos.length === 0){
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🔍</div>Nenhum produto encontrado.</div>`;
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🔍</div>Nenhum produto encontrado.${busca ? ' Tente outro termo de busca.' : ''}</div>`;
     return;
   }
   grid.innerHTML = produtos.map(p => {
     const st = catStyle(p.categoria);
     return `
     <div class="product-card">
-      <button class="product-remove" title="Remover do catálogo" onclick="removerProdutoCatalogo('${p.id}')">✕</button>
+      <div class="product-actions">
+        <button class="product-edit" title="Editar produto" onclick="editarProdutoCatalogo('${p.id}')">✎</button>
+        <button class="product-remove" title="Remover do catálogo" onclick="removerProdutoCatalogo('${p.id}')">✕</button>
+      </div>
       <div class="product-icon" style="background:${st.bg}">${st.emoji}</div>
       <div>
         <div class="product-cat-label">${p.categoria}</div>
@@ -319,7 +344,7 @@ function renderLoja(){
       </div>
       <div class="product-footer">
         <div class="product-price">${fmt(p.preco)}</div>
-        <button class="product-add" onclick="adicionarItem('${p.nome.replace(/'/g,"\\'")}', ${p.preco})">+</button>
+        <button class="product-add" title="Adicionar ao orçamento" onclick="adicionarItem('${p.nome.replace(/'/g,"\\'")}', ${p.preco})">+</button>
       </div>
     </div>`;
   }).join('');
@@ -350,6 +375,49 @@ function removerProdutoCatalogo(id){
   renderCatPills();
   renderLoja();
   renderFiltroCategoria();
+}
+
+/* ---------- EDITAR PRODUTO DO CATÁLOGO ---------- */
+function editarProdutoCatalogo(id){
+  let alvo = null, catAtual = null;
+  catalogo.forEach(cat => { const it = cat.itens.find(i => i.id === id); if(it){ alvo = it; catAtual = cat.categoria; } });
+  if(!alvo) return;
+  produtoEditandoId = id;
+  document.getElementById('ep-nome').value = alvo.nome;
+  document.getElementById('ep-categoria').value = catAtual;
+  document.getElementById('ep-preco').value = alvo.preco;
+  document.getElementById('edit-produto-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('ep-nome').focus(), 50);
+}
+function fecharEditarProduto(){
+  document.getElementById('edit-produto-overlay').classList.remove('show');
+  produtoEditandoId = null;
+}
+function salvarEdicaoProduto(){
+  if(!produtoEditandoId) return;
+  const nome = document.getElementById('ep-nome').value.trim();
+  const categoria = document.getElementById('ep-categoria').value.trim() || 'Serviços';
+  const preco = parsePreco(document.getElementById('ep-preco').value);
+  if(!nome){ toast('Digite o nome do produto'); return; }
+  let item = null;
+  catalogo.forEach(cat => {
+    const idx = cat.itens.findIndex(i => i.id === produtoEditandoId);
+    if(idx > -1) item = cat.itens.splice(idx, 1)[0];
+  });
+  catalogo = catalogo.filter(c => c.itens.length > 0);
+  if(item){
+    item.nome = nome;
+    item.preco = preco;
+    let cat = catalogo.find(c => c.categoria.toLowerCase() === categoria.toLowerCase());
+    if(!cat){ cat = { categoria, itens: [] }; catalogo.push(cat); }
+    cat.itens.push(item);
+  }
+  salvarCatalogo();
+  renderCatPills();
+  renderLoja();
+  renderFiltroCategoria();
+  fecharEditarProduto();
+  toast('Produto atualizado');
 }
 
 function renderCartBar(){
@@ -393,22 +461,54 @@ function adicionarItem(nome, preco){
 }
 function removerItem(id){ itensOrcamento = itensOrcamento.filter(i => i.id !== id); renderLines(); renderResumo(); atualizarStatus(); renderCartBar(); }
 function atualizarQtd(id, qtd){ const item = itensOrcamento.find(i => i.id === id); if(item){ item.qtd = Math.max(1, parseInt(qtd) || 1); } renderResumo(); renderCartBar(); }
+function moverItemOrcamento(id, direcao){
+  const idx = itensOrcamento.findIndex(i => i.id === id);
+  if(idx === -1) return;
+  const novoIdx = idx + direcao;
+  if(novoIdx < 0 || novoIdx >= itensOrcamento.length) return;
+  const [item] = itensOrcamento.splice(idx, 1);
+  itensOrcamento.splice(novoIdx, 0, item);
+  renderLines();
+}
+function duplicarItemOrcamento(id){
+  const idx = itensOrcamento.findIndex(i => i.id === id);
+  if(idx === -1) return;
+  const copia = { ...itensOrcamento[idx], id: uid() };
+  itensOrcamento.splice(idx + 1, 0, copia);
+  renderLines(); renderResumo(); atualizarStatus(); renderCartBar();
+  toast('Item duplicado');
+}
 
 function renderLines(){
   const body = document.getElementById('lines-body');
   const empty = document.getElementById('lines-empty');
+  const countLabel = document.getElementById('itens-count-label');
   body.innerHTML = '';
+  if(countLabel) countLabel.textContent = itensOrcamento.length > 0 ? `(${itensOrcamento.length} ${itensOrcamento.length === 1 ? 'item' : 'itens'})` : '';
   if(itensOrcamento.length === 0){ empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  itensOrcamento.forEach(item => {
+  itensOrcamento.forEach((item, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td>
+        <div class="line-reorder">
+          <button class="line-move-btn" title="Mover para cima" ${idx === 0 ? 'disabled' : ''}>▲</button>
+          <button class="line-move-btn" title="Mover para baixo" ${idx === itensOrcamento.length - 1 ? 'disabled' : ''}>▼</button>
+        </div>
+      </td>
       <td>${item.nome}</td>
       <td><input type="number" min="1" class="qty-input mono" value="${item.qtd}"></td>
       <td class="mono">${fmt(item.preco)}</td>
       <td class="mono">${fmt(item.preco * item.qtd)}</td>
-      <td><button class="remove-btn" title="Remover">✕</button></td>
+      <td class="line-actions-cell">
+        <button class="line-dup-btn" title="Duplicar item">⧉</button>
+        <button class="remove-btn" title="Remover">✕</button>
+      </td>
     `;
+    const moveBtns = tr.querySelectorAll('.line-move-btn');
+    moveBtns[0].onclick = () => moverItemOrcamento(item.id, -1);
+    moveBtns[1].onclick = () => moverItemOrcamento(item.id, 1);
+    tr.querySelector('.line-dup-btn').onclick = () => duplicarItemOrcamento(item.id);
     tr.querySelector('.qty-input').oninput = (e) => { atualizarQtd(item.id, e.target.value); renderLines(); };
     tr.querySelector('.remove-btn').onclick = () => removerItem(item.id);
     body.appendChild(tr);
