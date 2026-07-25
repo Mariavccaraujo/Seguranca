@@ -585,11 +585,12 @@ function gerarPDFProposta(cliente, itens, totais, obs, campos){
   return doc;
 }
 
-async function enviarPDFWhatsApp(file, mensagem, whatsRaw){
+async function enviarPDFWhatsApp(file, mensagem, whatsRaw, abaWhats){
   const numeroLimpo = digitos(whatsRaw);
   const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
   if(navigator.canShare && navigator.canShare({ files:[file] })){
     try{
+      if(abaWhats && !abaWhats.closed) abaWhats.close(); // não precisamos da aba: o compartilhamento nativo já cuida do envio
       await navigator.share({ files:[file], text: mensagem, title:'Orçamento' });
       return true;
     }catch(e){ /* usuário cancelou o compartilhamento — segue para o fallback abaixo */ }
@@ -600,7 +601,8 @@ async function enviarPDFWhatsApp(file, mensagem, whatsRaw){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   const waUrl = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-  window.open(waUrl, '_blank');
+  if(abaWhats && !abaWhats.closed){ abaWhats.location.href = waUrl; }
+  else{ window.open(waUrl, '_blank'); } // fallback caso a aba não tenha sido pré-aberta
   return false;
 }
 
@@ -674,10 +676,15 @@ async function finalizarOrcamento(){
   const obs = document.getElementById('observacoes').value.trim();
   if(!nome || !whatsRaw || itensOrcamento.length === 0) return;
 
+  const gerarProposta = document.getElementById('chk-proposta').checked;
+  // Abrimos a aba do WhatsApp JÁ, em branco, ainda dentro do clique do usuário.
+  // Se deixarmos para abrir só depois dos "await" abaixo, o navegador entende que
+  // não é mais uma ação direta do usuário e bloqueia a aba como se fosse pop-up.
+  const abaWhats = window.open('', '_blank');
+
   const totais = calcularTotais();
   const cliente = { nome, whats: whatsRaw, endereco };
   const mensagem = montarMensagem(cliente, itensOrcamento, totais, obs);
-  const gerarProposta = document.getElementById('chk-proposta').checked;
   const camposProposta = gerarProposta ? coletarCamposProposta() : null;
 
   const registro = { id: uid(), data: new Date().toISOString(), cliente, itens: itensOrcamento.map(i => ({ nome:i.nome, preco:i.preco, qtd:i.qtd })), totais, observacoes: obs, proposta: camposProposta };
@@ -700,13 +707,14 @@ async function finalizarOrcamento(){
     const blob = doc.output('blob');
     const nomeArquivo = `Orcamento-${nome.replace(/[^\w]+/g,'-')}.pdf`;
     const file = new File([blob], nomeArquivo, { type:'application/pdf' });
-    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw);
+    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw, abaWhats);
     toast(enviouDireto ? 'PDF pronto — escolha o WhatsApp do cliente para enviar' : 'PDF baixado — anexe-o na conversa que abriu no WhatsApp');
   }else{
     const numeroLimpo = digitos(whatsRaw);
     const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
     const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, '_blank');
+    if(abaWhats && !abaWhats.closed){ abaWhats.location.href = url; }
+    else{ window.open(url, '_blank'); }
     toast('Orçamento salvo e pronto para envio');
   }
 
@@ -1047,19 +1055,22 @@ function renderHistorico(){
   }).join('');
 }
 async function reenviar(reg){
+  // mesma correção: abrir a aba já no clique, antes de qualquer processamento assíncrono
+  const abaWhats = window.open('', '_blank');
   const mensagem = montarMensagem(reg.cliente, reg.itens, reg.totais, reg.observacoes);
   if(reg.proposta){
     const doc = gerarPDFProposta(reg.cliente, reg.itens, reg.totais, reg.observacoes, reg.proposta);
     const blob = doc.output('blob');
     const nomeArquivo = `Orcamento-${reg.cliente.nome.replace(/[^\w]+/g,'-')}.pdf`;
     const file = new File([blob], nomeArquivo, { type:'application/pdf' });
-    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, reg.cliente.whats);
+    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, reg.cliente.whats, abaWhats);
     toast(enviouDireto ? 'PDF pronto — escolha o WhatsApp do cliente' : 'PDF baixado — anexe-o na conversa que abriu no WhatsApp');
   }else{
     const numeroLimpo = digitos(reg.cliente.whats);
     const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
     const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, '_blank');
+    if(abaWhats && !abaWhats.closed){ abaWhats.location.href = url; }
+    else{ window.open(url, '_blank'); }
   }
 }
 
