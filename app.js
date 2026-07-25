@@ -496,7 +496,10 @@ async function salvarDadosEmpresa(){
   toast('Dados da empresa salvos! Serão usados em toda Proposta em PDF.');
 }
 
-/* ---------- GERAÇÃO DO PDF DA PROPOSTA ---------- */
+/* ---------- GERAÇÃO DO PDF DA PROPOSTA ----------
+   Layout inspirado no modelo "Proposta de Orçamento — Monocromático Elegante":
+   bloco escuro decorativo no topo, selos em pílula "Preparado por/para"
+   e caixa cinza com a mensagem de abertura. */
 function gerarPDFProposta(cliente, itens, totais, obs, campos){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'mm', format:'a4' });
@@ -516,20 +519,45 @@ function gerarPDFProposta(cliente, itens, totais, obs, campos){
     const lines = doc.splitTextToSize(txt, pageW - marginX*2);
     lines.forEach(l => { checkBreak(6); doc.text(l, marginX, y); y += 5.2; });
   }
+  function pill(text, x, py, w, h){
+    doc.setFillColor(255,255,255); doc.setDrawColor(25,25,25); doc.setLineWidth(0.35);
+    doc.roundedRect(x, py, w, h, h/2, h/2, 'FD');
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(35,35,35);
+    const linha = doc.splitTextToSize(text, w - 8)[0];
+    doc.text(linha, x + 4, py + h/2 + 1.3);
+  }
 
   const dataAtual = new Date().toLocaleDateString('pt-BR');
+
+  /* --- Cabeçalho: bloco escuro decorativo + título + selos --- */
+  doc.setFillColor(42,42,42);
+  doc.rect(140, 8, 52, 48, 'F');
+
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(120);
-  doc.text('Data: ' + dataAtual, marginX, y); y += 11;
+  doc.text('Data: ' + dataAtual, marginX, 18);
 
-  doc.setFont('times','bold'); doc.setFontSize(30); doc.setTextColor(20,20,20);
-  doc.text('Proposta de Orçamento', marginX, y); y += 12;
+  doc.setFont('times','bold'); doc.setFontSize(27); doc.setTextColor(20,20,20);
+  doc.text('Proposta de', marginX, 34);
+  doc.text('Orçamento', marginX, 46);
 
-  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(70);
-  doc.text(`Preparado por: ${campos.responsavel || '—'}${campos.nomeEmpresa ? ', ' + campos.nomeEmpresa : ''}`, marginX, y); y += 6.5;
-  doc.text(`Preparado para: ${cliente.nome}`, marginX, y); y += 11;
+  pill(`Preparado por: ${campos.responsavel || '—'}${campos.nomeEmpresa ? ', ' + campos.nomeEmpresa : ''}`, 82, 38, 112, 8);
+  pill(`Preparado para: ${cliente.nome}`, 82, 49, 112, 8);
 
-  bodyText(`Querido(a) ${cliente.nome}, obrigado pelo interesse em nossos serviços. Temos o prazer de compartilhar esta proposta com os detalhes do que podemos oferecer. Esperamos colaborar em breve!`, 10.5);
-  y += 4;
+  /* --- Caixa cinza com a mensagem de abertura --- */
+  const boxY = 64, boxH = 40;
+  doc.setFillColor(242,241,238);
+  doc.rect(0, boxY, pageW, boxH, 'F');
+  doc.setFillColor(58,58,58);
+  doc.rect(14, boxY + 5, 20, boxH - 10, 'F');
+  doc.rect(pageW - 34, boxY + 12, 20, boxH - 22, 'F');
+
+  doc.setFont('times','italic'); doc.setFontSize(11); doc.setTextColor(30,30,30);
+  doc.text('Querido(a) ' + cliente.nome + ',', pageW/2, boxY + 12, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.3); doc.setTextColor(60,60,60);
+  const introLinhas = doc.splitTextToSize('Obrigado pelo interesse em nossos serviços. Temos o prazer de compartilhar esta proposta com os detalhes do que podemos oferecer. Esperamos colaborar em breve!', 108);
+  introLinhas.forEach((l, idx) => doc.text(l, pageW/2, boxY + 19 + idx*4.6, {align:'center'}));
+
+  y = boxY + boxH + 14;
 
   if(campos.sobreNos){
     sectionTitle('Sobre Nós');
