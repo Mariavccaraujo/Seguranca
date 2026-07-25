@@ -52,6 +52,25 @@ function catStyle(cat){ return CAT_STYLE[cat] || {emoji:'🔧', bg:'var(--surfac
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function hojeStr(){ const d = new Date(); const tz = d.getTimezoneOffset()*60000; return new Date(d - tz).toISOString().slice(0,10); }
 function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=> t.classList.remove('show'), 2200); }
+
+/* ---------- BANNER "ABRIR WHATSAPP" (link real, clique do usuário — nunca é bloqueado) ----------
+   Em vez de tentar abrir o WhatsApp automaticamente via window.open() depois de operações
+   assíncronas (o que os navegadores podem bloquear como pop-up, resultando em about:blank
+   ou nada acontecendo), mostramos um botão de verdade (<a href>) para o usuário tocar.
+   Um clique real do usuário em um link nunca é bloqueado, em nenhum navegador. */
+function mostrarBannerWhats(url, texto){
+  const banner = document.getElementById('wa-send-banner');
+  const link = document.getElementById('wa-send-link');
+  const span = document.getElementById('wa-send-texto');
+  if(!banner || !link || !span) return;
+  span.textContent = texto || '✅ Pronto! Toque para abrir o WhatsApp';
+  link.href = url;
+  banner.classList.add('show');
+}
+function fecharBannerWhats(){
+  const banner = document.getElementById('wa-send-banner');
+  if(banner) banner.classList.remove('show');
+}
 function parsePreco(v){ if(typeof v === 'number') return v; const n = parseFloat(String(v).replace(/[^\d,.-]/g,'').replace(',','.')); return isNaN(n) ? 0 : n; }
 function fmt(v){ return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function fmtDataBR(dataStr){ const [y,m,d] = dataStr.split('-'); return `${d}/${m}/${y}`; }
@@ -585,15 +604,14 @@ function gerarPDFProposta(cliente, itens, totais, obs, campos){
   return doc;
 }
 
-async function enviarPDFWhatsApp(file, mensagem, whatsRaw, abaWhats){
+async function enviarPDFWhatsApp(file, mensagem, whatsRaw){
   const numeroLimpo = digitos(whatsRaw);
   const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
   if(navigator.canShare && navigator.canShare({ files:[file] })){
     try{
-      if(abaWhats && !abaWhats.closed) abaWhats.close(); // não precisamos da aba: o compartilhamento nativo já cuida do envio
       await navigator.share({ files:[file], text: mensagem, title:'Orçamento' });
       return true;
-    }catch(e){ /* usuário cancelou o compartilhamento — segue para o fallback abaixo */ }
+    }catch(e){ /* usuário cancelou ou o navegador não conseguiu compartilhar — segue para o fallback abaixo */ }
   }
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
@@ -601,8 +619,7 @@ async function enviarPDFWhatsApp(file, mensagem, whatsRaw, abaWhats){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
   const waUrl = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-  if(abaWhats && !abaWhats.closed){ abaWhats.location.href = waUrl; }
-  else{ window.open(waUrl, '_blank'); } // fallback caso a aba não tenha sido pré-aberta
+  mostrarBannerWhats(waUrl, '📄 PDF baixado! Toque para abrir o WhatsApp e anexar o arquivo');
   return false;
 }
 
@@ -677,10 +694,6 @@ async function finalizarOrcamento(){
   if(!nome || !whatsRaw || itensOrcamento.length === 0) return;
 
   const gerarProposta = document.getElementById('chk-proposta').checked;
-  // Abrimos a aba do WhatsApp JÁ, em branco, ainda dentro do clique do usuário.
-  // Se deixarmos para abrir só depois dos "await" abaixo, o navegador entende que
-  // não é mais uma ação direta do usuário e bloqueia a aba como se fosse pop-up.
-  const abaWhats = window.open('', '_blank');
 
   const totais = calcularTotais();
   const cliente = { nome, whats: whatsRaw, endereco };
@@ -707,15 +720,14 @@ async function finalizarOrcamento(){
     const blob = doc.output('blob');
     const nomeArquivo = `Orcamento-${nome.replace(/[^\w]+/g,'-')}.pdf`;
     const file = new File([blob], nomeArquivo, { type:'application/pdf' });
-    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw, abaWhats);
-    toast(enviouDireto ? 'PDF pronto — escolha o WhatsApp do cliente para enviar' : 'PDF baixado — anexe-o na conversa que abriu no WhatsApp');
+    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, whatsRaw);
+    if(enviouDireto) toast('Compartilhamento aberto — escolha o WhatsApp do cliente');
+    // se não foi direto, o botão "Abrir WhatsApp" já apareceu na tela (mostrarBannerWhats)
   }else{
     const numeroLimpo = digitos(whatsRaw);
     const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
     const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-    if(abaWhats && !abaWhats.closed){ abaWhats.location.href = url; }
-    else{ window.open(url, '_blank'); }
-    toast('Orçamento salvo e pronto para envio');
+    mostrarBannerWhats(url, '✅ Orçamento salvo! Toque para abrir o WhatsApp e enviar');
   }
 
   renderHistorico(); renderClientes(); renderClientDatalist(); renderCalendario(); renderAgendaDia(); renderNotifs(); renderDashboard();
@@ -1055,22 +1067,19 @@ function renderHistorico(){
   }).join('');
 }
 async function reenviar(reg){
-  // mesma correção: abrir a aba já no clique, antes de qualquer processamento assíncrono
-  const abaWhats = window.open('', '_blank');
   const mensagem = montarMensagem(reg.cliente, reg.itens, reg.totais, reg.observacoes);
   if(reg.proposta){
     const doc = gerarPDFProposta(reg.cliente, reg.itens, reg.totais, reg.observacoes, reg.proposta);
     const blob = doc.output('blob');
     const nomeArquivo = `Orcamento-${reg.cliente.nome.replace(/[^\w]+/g,'-')}.pdf`;
     const file = new File([blob], nomeArquivo, { type:'application/pdf' });
-    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, reg.cliente.whats, abaWhats);
-    toast(enviouDireto ? 'PDF pronto — escolha o WhatsApp do cliente' : 'PDF baixado — anexe-o na conversa que abriu no WhatsApp');
+    const enviouDireto = await enviarPDFWhatsApp(file, mensagem, reg.cliente.whats);
+    if(enviouDireto) toast('Compartilhamento aberto — escolha o WhatsApp do cliente');
   }else{
     const numeroLimpo = digitos(reg.cliente.whats);
     const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
     const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
-    if(abaWhats && !abaWhats.closed){ abaWhats.location.href = url; }
-    else{ window.open(url, '_blank'); }
+    mostrarBannerWhats(url, '✅ Toque para abrir o WhatsApp e reenviar');
   }
 }
 
