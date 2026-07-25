@@ -201,6 +201,10 @@ function renderNotifs(){
       <div style="flex:1">
         <div class="notif-item-name">${n.clienteNome}</div>
         <div class="notif-item-meta">${atrasado ? 'Atrasado — ' : ''}${fmtDataBR(n.data)} às ${n.hora || '--:--'} ${n.servico ? '· ' + n.servico : ''}</div>
+        ${n.lembrete2hEnviado ? `<div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap">
+          <button class="notif-mini-btn" onclick="enviarLembreteCliente('${n.id}'); event.stopPropagation();">📲 Avisar cliente</button>
+          <button class="notif-mini-btn" onclick="enviarLembreteResponsavel('${n.id}'); event.stopPropagation();">📲 Avisar responsável</button>
+        </div>` : ''}
         <button class="notif-mini-btn" onclick="concluirAgendamento('${n.id}'); event.stopPropagation();">Marcar concluído</button>
       </div>
     </div>`;
@@ -684,7 +688,7 @@ async function finalizarOrcamento(){
     const data = document.getElementById('ag-data').value || hojeStr();
     const hora = document.getElementById('ag-hora').value;
     const servico = document.getElementById('ag-servico').value.trim();
-    agenda.push({ id: uid(), clienteNome: nome, whats: whatsRaw, data, hora, servico, categoria: null, endereco, observacao: '', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false });
+    agenda.push({ id: uid(), clienteNome: nome, whats: whatsRaw, data, hora, servico, categoria: null, endereco, observacao: '', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false, lembrete2hEnviado:false });
     await salvarAgenda();
   }
 
@@ -884,7 +888,7 @@ function adicionarAgendamento(){
   const categoria = document.getElementById('pl-categoria').value.trim() || null;
   const endereco = document.getElementById('pl-endereco').value.trim();
   if(!clienteNome){ toast('Digite o nome do cliente'); return; }
-  agenda.push({ id: uid(), clienteNome, whats, data: diaSelecionado, hora, servico, categoria, endereco, observacao:'', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false });
+  agenda.push({ id: uid(), clienteNome, whats, data: diaSelecionado, hora, servico, categoria, endereco, observacao:'', status:'pendente', criadoEm: hojeStr(), lembreteEnviado:false, lembrete2hEnviado:false });
   salvarAgenda();
   document.getElementById('pl-cliente').value = '';
   document.getElementById('pl-whats').value = '';
@@ -930,20 +934,65 @@ function dispararLembrete(a){
     try{ new Notification('Atendimento em 1 hora', { body: texto }); }catch(e){}
   }
 }
+function dispararLembrete2h(a){
+  const texto = `Faltam 2 horas: ${a.clienteNome}${a.hora ? ' às ' + a.hora : ''}${a.servico ? ' — ' + a.servico : ''}. Abra o sininho para avisar cliente e responsável no WhatsApp.`;
+  toast('⏰ ' + texto);
+  if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+    try{ new Notification('Atendimento em 2 horas — enviar avisos', { body: texto }); }catch(e){}
+  }
+}
 function checkLembretes(){
   const agora = new Date();
   let mudou = false;
   agenda.forEach(a => {
-    if(a.status !== 'pendente' || a.lembreteEnviado || !a.hora) return;
+    if(a.status !== 'pendente' || !a.hora) return;
     const alvo = new Date(a.data + 'T' + a.hora + ':00');
     const diffMin = (alvo - agora) / 60000;
-    if(diffMin <= 60 && diffMin > -15){
+    if(!a.lembrete2hEnviado && diffMin <= 120 && diffMin > -15){
+      dispararLembrete2h(a);
+      a.lembrete2hEnviado = true;
+      mudou = true;
+    }
+    if(!a.lembreteEnviado && diffMin <= 60 && diffMin > -15){
       dispararLembrete(a);
       a.lembreteEnviado = true;
       mudou = true;
     }
   });
   if(mudou){ salvarAgenda(); renderNotifs(); }
+}
+
+/* ---------- ENVIO DE LEMBRETE PELO WHATSAPP (cliente + responsável) ---------- */
+function abrirWhatsAppNumero(numeroRaw, mensagem){
+  const numeroLimpo = digitos(numeroRaw);
+  if(!numeroLimpo){ toast('⚠️ Número de WhatsApp não cadastrado'); return; }
+  const numeroFinal = numeroLimpo.length <= 11 ? '55' + numeroLimpo : numeroLimpo;
+  const url = `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
+  window.open(url, '_blank');
+}
+function montarMsgLembreteCliente(a){
+  const partes = [`Olá ${a.clienteNome}! Passando para lembrar do seu atendimento hoje às ${a.hora || '--:--'}${a.servico ? ' — ' + a.servico : ''}.`];
+  if(a.endereco) partes.push(`Endereço: ${a.endereco}.`);
+  partes.push(`Qualquer dúvida, estamos à disposição!${perfilEmpresa.nomeEmpresa ? ' - ' + perfilEmpresa.nomeEmpresa : ''}`);
+  return partes.join(' ');
+}
+function montarMsgLembreteResponsavel(a){
+  const partes = [`Lembrete: atendimento com ${a.clienteNome} hoje às ${a.hora || '--:--'}${a.servico ? ' — ' + a.servico : ''}.`];
+  if(a.endereco) partes.push(`Endereço: ${a.endereco}.`);
+  if(a.whats) partes.push(`Contato do cliente: ${a.whats}.`);
+  return partes.join(' ');
+}
+function enviarLembreteCliente(id){
+  const a = agenda.find(x => x.id === id);
+  if(!a) return;
+  if(!a.whats){ toast('⚠️ Cliente sem WhatsApp cadastrado'); return; }
+  abrirWhatsAppNumero(a.whats, montarMsgLembreteCliente(a));
+}
+function enviarLembreteResponsavel(id){
+  const a = agenda.find(x => x.id === id);
+  if(!a) return;
+  if(!perfilEmpresa.telefoneContato){ toast('⚠️ Cadastre o telefone do responsável em Dados da Empresa'); return; }
+  abrirWhatsAppNumero(perfilEmpresa.telefoneContato, montarMsgLembreteResponsavel(a));
 }
 setInterval(checkLembretes, 60000);
 function renderAgendaDia(){
