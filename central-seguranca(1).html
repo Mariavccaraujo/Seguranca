@@ -122,6 +122,7 @@
   .btn-secondary{ background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
   .btn-secondary:hover{ border-color:var(--text-muted); }
   .btn-amber{ background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber); }
+  .btn-danger{ background:var(--red-soft); color:var(--red); border:1px solid var(--red); }
   .btn-amber:hover{ background:var(--amber); color:#FBFAF6; }
   .btn-full{ width:100%; }
   .btn-sm{ padding:7px 12px; font-size:12px; }
@@ -653,6 +654,12 @@
           </div>
           <input type="file" id="input-importar-backup" accept="application/json,.json" style="display:none" onchange="importarBackup(event)">
         </div>
+
+        <div class="panel">
+          <div class="panel-title">Zona de Risco</div>
+          <div class="notif-empty" style="text-align:left; padding:0 0 16px; font-size:12.5px; background:var(--red-soft); border-radius:9px; padding:10px 12px; color:var(--text)">⚠️ Isso apaga <b>permanentemente</b> todo o catálogo, clientes, agenda, histórico de orçamentos e dados da empresa deste navegador — volta tudo para o estado inicial (catálogo padrão vazio). <b>Não tem como desfazer.</b> Faça um backup antes, se quiser guardar algo.</div>
+          <button class="btn btn-danger" onclick="zerarBancoDeDados()">🗑️ Zerar banco de dados</button>
+        </div>
       </section>
 
     </div>
@@ -674,12 +681,25 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="edit-cliente-overlay">
+  <div class="modal-box">
+    <div class="panel-title">Editar Cliente</div>
+    <div class="field"><label>Nome *</label><input type="text" id="ec-nome" placeholder="Ex: João Silva"></div>
+    <div class="field"><label>WhatsApp *</label><input type="text" id="ec-whats" placeholder="Ex: 84 99999-8888"></div>
+    <div class="field" style="margin-bottom:0"><label>Endereço</label><input type="text" id="ec-endereco" placeholder="Opcional"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-full" onclick="fecharEditarCliente()">Cancelar</button>
+      <button class="btn btn-primary btn-full" onclick="salvarEdicaoCliente()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="wa-banner" id="wa-send-banner">
   <span class="wa-texto" id="wa-send-texto">✅ Pronto! Toque para abrir o WhatsApp</span>
   <a class="wa-link" id="wa-send-link" href="#" target="_blank" rel="noopener">Abrir WhatsApp</a>
   <button class="wa-close" onclick="fecharBannerWhats()" aria-label="Fechar">✕</button>
 </div>
 
-<script src="app.js?v=20260725b" defer></script>
+<script src="app.js?v=20260725c" defer></script>
 </body>
 </html>
