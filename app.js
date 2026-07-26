@@ -1019,6 +1019,19 @@ async function salvarEdicaoCliente(){
   fecharEditarCliente();
   toast('Cliente atualizado');
 }
+
+/* ---------- LIMPAR APENAS OS CLIENTES CADASTRADOS ----------
+   Diferente de zerarBancoDeDados(): aqui só o CRM de clientes é apagado.
+   Catálogo, agenda, histórico de orçamentos e dados da empresa continuam intactos. */
+async function limparClientes(){
+  if(clientes.length === 0){ toast('Não há clientes cadastrados'); return; }
+  const ok = confirm(`Isso vai apagar permanentemente os ${clientes.length} cliente(s) cadastrados no CRM.\n\nO catálogo, a agenda, o histórico de orçamentos e os dados da empresa NÃO serão afetados.\n\nDeseja continuar?`);
+  if(!ok) return;
+  clientes = [];
+  await salvarClientes();
+  renderClientes(); renderClientDatalist(); renderDashboard();
+  toast('🗑️ Clientes cadastrados foram apagados');
+}
 function renderClientes(){
   const busca = (document.getElementById('client-search').value || '').toLowerCase();
   const grid = document.getElementById('client-grid');
