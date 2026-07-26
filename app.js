@@ -187,6 +187,33 @@ async function importarBackup(evento){
   evento.target.value = '';
 }
 
+/* ---------- ZERAR BANCO DE DADOS (reset total, ação destrutiva) ---------- */
+async function zerarBancoDeDados(){
+  const passo1 = confirm('⚠️ ATENÇÃO: isso vai APAGAR PERMANENTEMENTE todo o catálogo, clientes, agenda, histórico de orçamentos e dados da empresa deste navegador.\n\nNão tem como desfazer. Deseja continuar?');
+  if(!passo1) return;
+  const passo2 = prompt('Para confirmar, digite ZERAR (em maiúsculas) na caixa abaixo:');
+  if(passo2 !== 'ZERAR'){ toast('Cancelado — nada foi apagado'); return; }
+
+  catalogo = JSON.parse(JSON.stringify(CATEGORIAS_PADRAO));
+  historico = [];
+  clientes = [];
+  agenda = [];
+  perfilEmpresa = {};
+
+  await salvarCatalogo(); await salvarHistorico(); await salvarClientes(); await salvarAgenda(); await salvarPerfilEmpresa();
+
+  carregarFormEmpresa();
+  renderCatPills(); renderLoja(); renderFiltroCategoria();
+  renderClientDatalist(); renderClientes();
+  renderCalendario(); renderAgendaDia(); renderFiltroStatus();
+  renderHistorico(); renderDashboard(); renderNotifs();
+  itensOrcamento = [];
+  renderLines(); renderResumo(); atualizarStatus();
+
+  toast('🗑️ Banco de dados zerado — voltou ao estado inicial');
+  setSection('dashboard');
+}
+
 /* ---------- NAVIGATION ---------- */
 const TITLES = {
   dashboard: ['Dashboard', 'Visão geral do seu negócio'],
@@ -961,6 +988,37 @@ function salvarNovoCliente(){
   renderClientes(); renderClientDatalist(); renderDashboard();
   toast('Cliente cadastrado');
 }
+
+/* ---------- EDITAR CLIENTE JÁ CADASTRADO ---------- */
+let clienteEditandoId = null;
+function editarCliente(id){
+  const c = clientes.find(cl => cl.id === id);
+  if(!c) return;
+  clienteEditandoId = id;
+  document.getElementById('ec-nome').value = c.nome;
+  document.getElementById('ec-whats').value = c.whats;
+  document.getElementById('ec-endereco').value = c.endereco || '';
+  document.getElementById('edit-cliente-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('ec-nome').focus(), 50);
+}
+function fecharEditarCliente(){
+  document.getElementById('edit-cliente-overlay').classList.remove('show');
+  clienteEditandoId = null;
+}
+async function salvarEdicaoCliente(){
+  if(!clienteEditandoId) return;
+  const nome = document.getElementById('ec-nome').value.trim();
+  const whats = document.getElementById('ec-whats').value.trim();
+  const endereco = document.getElementById('ec-endereco').value.trim();
+  if(!nome || !whats){ toast('Preencha nome e WhatsApp'); return; }
+  const c = clientes.find(cl => cl.id === clienteEditandoId);
+  if(!c) return;
+  c.nome = nome; c.whats = whats; c.endereco = endereco;
+  await salvarClientes();
+  renderClientes(); renderClientDatalist(); renderDashboard();
+  fecharEditarCliente();
+  toast('Cliente atualizado');
+}
 function renderClientes(){
   const busca = (document.getElementById('client-search').value || '').toLowerCase();
   const grid = document.getElementById('client-grid');
@@ -981,6 +1039,7 @@ function renderClientes(){
       <div class="client-actions">
         <button class="btn btn-amber btn-sm" onclick="novoOrcamentoPara('${c.id}')">Novo orçamento</button>
         <button class="btn btn-secondary btn-sm" onclick="agendarPara('${c.id}')">Agendar</button>
+        <button class="btn btn-secondary btn-sm" onclick="editarCliente('${c.id}')">✏️ Editar</button>
       </div>
     </div>
   `).join('');
